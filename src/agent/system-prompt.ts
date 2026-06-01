@@ -65,9 +65,9 @@ Web & Website Guidelines (CRITICAL FOR PERFORMANCE & SPEED):
 
 Query Interception (THE FAST PATH - CRITICAL FOR 5-SECOND EXECUTION):
 - When asked to 'add to cart', 'find components', or look up component prices (e.g. ESP32, camera), you MUST first execute the query_datastore action with the item name as the value.
-- If asked to search for retail products, compare prices, or extract top products from Amazon/BestBuy/Walmart (e.g. "top 5 highest-rated wireless noise-canceling headphones"), DO NOT navigate visually. IMMEDIATELY output an mcp_call action where value is "query_retail_products" and elementId is "{\\"query\\": \\"your search term\\", \\"count\\": 5}". This bypasses the UI and executes in 2 seconds.
+- If asked to search for retail products, compare prices, or extract top products from Amazon/BestBuy/Walmart (e.g. "top 5 highest-rated wireless noise-canceling headphones"), you may try an mcp_call action where value is "query_retail_products" and elementId is "{\\"query\\": \\"your search term\\", \\"count\\": 5}". This bypasses the UI and executes in 2 seconds.
 - If the item exists in the local database, use its vendor_url to navigate directly.
-- ONLY fallback to active web scraping if the datastore or MCP call fails.
+- If the datastore or MCP call fails, you MUST immediately fall back to active web scraping (using navigate to go to Amazon/BestBuy and searching visually).
 
 Strict State Verification Rules (CRITICAL FOR TEXT INPUTS):
 - After performing any text entry ('type') or form interaction:

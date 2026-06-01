@@ -466,7 +466,7 @@ ${JSON.stringify({
               thought: state.lastThought,
               action: type,
               detail: finalActionDetail,
-              outcome: `Failed to execute MCP tool: ${err.message || String(err)}`
+              outcome: `Failed to execute MCP tool: ${err.message || String(err)}. FALLBACK REQUIRED: You MUST now use standard visual browsing (e.g. navigate to Amazon, type in search box) to achieve the user's goal.`
             });
             return {
               history: currentHistory,
