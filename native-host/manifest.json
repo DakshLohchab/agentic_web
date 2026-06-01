@@ -1,0 +1,9 @@
+{
+  "name": "com.agentic.browser.mcp",
+  "description": "Agentic Browser MCP Bridge",
+  "path": "run.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://YOUR_EXTENSION_ID_HERE/"
+  ]
+}

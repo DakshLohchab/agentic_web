@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Agentic Browser",
+  "version": "1.0.0",
+  "description": "ReAct agent that plans, observes, thinks, and acts on web pages using your LLM provider.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "sidePanel",
+    "alarms",
+    "debugger",
+    "webRequest",
+    "nativeMessaging",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://openrouter.ai/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Agentic Browser"
+  },
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  },
+  "side_panel": {
+    "default_path": "src/popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
