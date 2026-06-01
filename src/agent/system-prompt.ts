@@ -94,7 +94,8 @@ export function buildUserMessage(
   retryCount: number,
   heuristicHint: string | null,
   siteProfile: SiteProfile | null = null,
-  memory: Record<string, any> = {}
+  memory: Record<string, any> = {},
+  pastExperience: { goal: string; steps: string[] } | null = null
 ): string {
   const recentHistory = history.slice(-8);
   const historyText =
@@ -129,8 +130,12 @@ ${apiText}`;
     ? `\n=== Cross-Tab Shared Memory ===\n${JSON.stringify(memory, null, 2)}\n` 
     : "";
 
+  const experienceBlock = pastExperience
+    ? `\n=== PAST EXPERIENCE ===\nYou previously solved a highly similar task: "${pastExperience.goal}".\nSuccessful sequence used:\n${pastExperience.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}\nUse this past knowledge to skip unnecessary exploration steps.\n`
+    : "";
+
   return `Goal: ${goal}
-${retryBlock}${hintBlock}${profileBlock}${memoryBlock}
+${retryBlock}${hintBlock}${profileBlock}${memoryBlock}${experienceBlock}
 Page: ${snapshot.title || ""} | ${snapshot.url || ""}
 
 Semantic Accessibility Tree:

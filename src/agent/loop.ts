@@ -1,4 +1,5 @@
 import { SYSTEM_PROMPT, buildUserMessage } from "./system-prompt";
+import { ExperienceStore, Experience } from "./experience";
 import { callLLM } from "../llm/index";
 import { MSG, sendToTab, broadcastUpdate, updateTabOverlay } from "../utils/messaging";
 import { waitForTabLoad } from "../utils/tab-access";
@@ -70,6 +71,7 @@ export class AgentLoop {
   groundingImage: string | null = null;
   verifyAttempts = 0;
   timeoutCount = 0;
+  pastExperience: Experience | null = null;
 
   constructor(sharedMemory: Record<string, any> = {}) {
     this.memory = sharedMemory;
@@ -126,6 +128,7 @@ export class AgentLoop {
     this.groundingImage = null;
     this.verifyAttempts = 0;
     this.timeoutCount = 0;
+    this.pastExperience = await ExperienceStore.findSimilarExperience(goal);
     await speedRenderer.enable(tabId);
     await this.pushUpdate();
 
@@ -264,7 +267,7 @@ export class AgentLoop {
       } catch (e) {
         console.warn("Failed to fetch dynamic site profile", e);
       }
-      const userMessage = buildUserMessage(state.goal, state.snapshot, state.history, state.retryCount, hint, siteProfile, this.memory);
+      const userMessage = buildUserMessage(state.goal, state.snapshot, state.history, state.retryCount, hint, siteProfile, this.memory, this.pastExperience);
       
       let obstructionHint = "";
       if (state.retryCount > 0 && state.lastError) {
@@ -377,6 +380,7 @@ ${JSON.stringify({
         await this.pushUpdate({ action });
 
         if (type === "done" || type === "synthesize") {
+          ExperienceStore.saveExperience(this.goal, currentHistory);
 
 
           this.status = "done";
