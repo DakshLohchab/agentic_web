@@ -132,7 +132,10 @@ export async function detectAndClearOverlays(tabId: number): Promise<{ cleared: 
 
     return results[0].result as { cleared: boolean; details: string[] };
   } catch (err: any) {
-    console.error("Overlay nuker failed:", err);
+    if (err.message && err.message.includes('No tab with id')) {
+      return { cleared: false, details: ["Tab not found"] };
+    }
+    console.warn("Overlay nuker warning:", err.message || err);
     return { cleared: false, details: [`Error injecting overlay nuker: ${err.message || err}`] };
   }
 }

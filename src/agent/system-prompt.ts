@@ -83,44 +83,9 @@ Safety:
 Output format (STRICT):
 - Output ONLY the JSON object. Nothing else.`;
 
-export const PLANNER_PROMPT = `You are a strategic planner for a web browsing agent.
-Analyze the user's goal and the initial page snapshot to create a robust step-by-step plan.
-Respond with ONLY valid JSON (no markdown, no code fences).
 
-Schema:
-{
-  "plan": [
-    {
-      "action": "click|type|press|navigate|scroll|extract|wait|done|ask_user|call_api|clear_obstacle|delegate|store_memory|synthesize|mcp_call|query_datastore",
-      "elementHint": "CSS selector or clear text description of the target element (do NOT use elementId)",
-      "value": "text for type; key for press (default Enter); scroll direction; extract hint; wait time in seconds",
-      "url": "for navigate or delegate or null",
-      "condition": "optional condition, e.g. 'if URL contains X' or 'if element matching Y exists'"
-    }
-  ],
-  "confidence": 0.8
-}
 
-Guidelines:
-- Cap the plan at a maximum of 12 steps.
-- confidence should be a number between 0.0 and 1.0 representing how certain you are this plan will succeed without needing dynamic replanning.
-- Avoid branching logic. Create a straight-line sequence. If uncertainty is high, end the plan early and keep confidence low.
-- Return ONLY the JSON object.`;
 
-export const VERIFY_PROMPT = `You are a strict verification agent. Your job is to check if the user's goal has actually been achieved based on the current page state.
-Respond with ONLY valid JSON (no markdown, no code fences).
-
-Schema:
-{
-  "achieved": boolean,
-  "confidence": number (0.0 to 1.0),
-  "reason": "string explaining why"
-}
-
-Guidelines:
-- Be strict. For example, "open YouTube video" is only achieved if the current URL contains "/watch". "Add to cart" is only achieved if there is visual confirmation in the DOM that the item is in the cart.
-- Keep confidence high (> 0.6) only if you are certain.
-- Return ONLY the JSON object.`;
 
 export function buildUserMessage(
   goal: string,
@@ -131,10 +96,11 @@ export function buildUserMessage(
   siteProfile: SiteProfile | null = null,
   memory: Record<string, any> = {}
 ): string {
+  const recentHistory = history.slice(-8);
   const historyText =
-    history.length === 0
+    recentHistory.length === 0
       ? "(no prior steps)"
-      : history
+      : recentHistory
           .map(
             (h, i) =>
               `Step ${i + 1}: ${h.action}${h.detail ? ` (${h.detail})` : ""} — ${h.thought || ""} → ${h.outcome || "ok"}`

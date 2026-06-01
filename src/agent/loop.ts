@@ -1,4 +1,4 @@
-import { SYSTEM_PROMPT, PLANNER_PROMPT, VERIFY_PROMPT, buildUserMessage } from "./system-prompt";
+import { SYSTEM_PROMPT, buildUserMessage } from "./system-prompt";
 import { callLLM } from "../llm/index";
 import { MSG, sendToTab, broadcastUpdate, updateTabOverlay } from "../utils/messaging";
 import { waitForTabLoad } from "../utils/tab-access";
@@ -32,7 +32,7 @@ function fuzzyMatchElement(hint: string, interactables: any[]) {
 }
 
 const MAX_RETRIES = 3;
-const MAX_STEPS = 50;
+const MAX_STEPS = 30;
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -103,44 +103,7 @@ export class AgentLoop {
     });
   }
 
-  async verifyGoal(goal: string, snapshot: any) {
-    this.status = "thinking";
-    await this.pushUpdate();
-    const compactSnapshot = {
-      title: snapshot.title,
-      url: snapshot.url,
-      elements: (snapshot.interactables || []).slice(0, 20).map((i: any) => ({ tag: i.tag, text: i.text, value: i.value }))
-    };
-    const prompt = `Goal: ${goal}\nPage: ${compactSnapshot.title} | ${compactSnapshot.url}\nTop Elements:\n${JSON.stringify(compactSnapshot.elements, null, 2)}`;
-    try {
-      return await callLLM(VERIFY_PROMPT, prompt, null);
-    } catch (err) {
-      console.warn("Goal verification failed", err);
-      return { achieved: true, confidence: 1.0, reason: "Verification error" };
-    }
-  }
 
-  async planTask(goal: string, snapshot: any, imageBase64: string | null = null) {
-    this.status = "planning";
-    await this.pushUpdate();
-    let prompt = `Goal: ${goal}\nPage: ${snapshot.title} | ${snapshot.url}\nSemantic Accessibility Tree:\n${snapshot.semanticTree || snapshot.condensed}`;
-    if (imageBase64) {
-      prompt += "\nScreenshot attached for spatial layout reference. Use it to understand element positions and visual groupings that may not be obvious from the DOM alone.\n";
-    }
-    try {
-      const result = await callLLM(PLANNER_PROMPT, prompt, imageBase64);
-      if (result && result.plan && Array.isArray(result.plan)) {
-        this.plannedSteps = result.plan.slice(0, 12);
-        this.planConfidence = result.confidence || 0;
-        this.currentStepIndex = 0;
-      } else {
-        this.plannedSteps = [];
-      }
-    } catch (err) {
-      console.warn("Pre-planning failed", err);
-      this.plannedSteps = [];
-    }
-  }
 
   async start(tabId: number, goal: string) {
     this.tabId = tabId;
@@ -175,10 +138,10 @@ export class AgentLoop {
       await this.pushUpdate();
 
       // Wait for network requests to settle (Max 1.5s, idle for 150ms)
-      await waitForNetworkIdle(tabId, 150, 1500);
+      await waitForNetworkIdle(tabId, 80, 500);
 
       try {
-        await sendToTab(tabId, { type: "WAIT_FOR_STABILIZATION", timeout: 2000, stabilityMs: 150 });
+        await sendToTab(tabId, { type: "WAIT_FOR_STABILIZATION", timeout: 800, stabilityMs: 80 });
       } catch (e) {
         console.warn("Stabilization wait failed", e);
       }
@@ -230,9 +193,7 @@ export class AgentLoop {
 
       snapshot.semanticTree = generateSemanticTree(snapshot.interactables);
 
-      if (this.plannedSteps.length === 0 || this.currentStepIndex >= this.plannedSteps.length) {
-        await this.planTask(state.goal, snapshot, this.step === 0 ? this.groundingImage : null);
-      }
+
 
       return { snapshot, history: historyUpdates };
     });
@@ -295,17 +256,6 @@ export class AgentLoop {
       let imageBase64: string | null = null;
       if (state.step === 0 && this.hasGroundingImage) {
         imageBase64 = this.groundingImage;
-      } else if (state.retryCount > 0) {
-        try {
-          await sendToTab(tabId, { type: MSG.SNAPSHOT, withMarkers: true });
-          const capRes = await chrome.runtime.sendMessage({ type: MSG.CAPTURE_VIEWPORT, tabId });
-          if (capRes?.ok) {
-            imageBase64 = capRes.dataUrl;
-          }
-          await sendToTab(tabId, { type: "CLEAR_MARKERS" });
-        } catch (e) {
-          console.warn("Vision capture failed", e);
-        }
       }
 
       let siteProfile = null;
@@ -427,25 +377,7 @@ ${JSON.stringify({
         await this.pushUpdate({ action });
 
         if (type === "done" || type === "synthesize") {
-          const isNavGoal = this.goal.toLowerCase().includes("open") || this.goal.toLowerCase().includes("navigate");
-          if (state.step >= 2 && !isNavGoal && this.verifyAttempts < 2) {
-            this.verifyAttempts++;
-            const verify = await this.verifyGoal(this.goal, state.snapshot);
-            if (verify && verify.achieved === false && verify.confidence > 0.6) {
-              currentHistory.push({
-                thought: state.lastThought,
-                action: "verify_fail",
-                detail: verify.reason || "Goal verification failed.",
-                outcome: "Verification failed."
-              });
-              return {
-                history: currentHistory,
-                step: state.step + 1,
-                lastAction: "verify_fail",
-                retryCount: 0
-              };
-            }
-          }
+
 
           this.status = "done";
           this.lastThought = action.result || "Goal completed successfully.";
@@ -724,14 +656,12 @@ ${JSON.stringify({
       const expectedPlan = this.plannedSteps[this.currentStepIndex];
       if (expectedPlan) {
         const payloadAction = actions[0];
-        let diverged = false;
-        if (payloadAction.action !== expectedPlan.action) diverged = true;
-        if (expectedPlan.url && payloadAction.url !== expectedPlan.url) diverged = true;
-        
-        if (diverged) {
+        let type = payloadAction.action;
+        this.currentStepIndex++;
+        if (type === "navigate") {
           this.plannedSteps = [];
-        } else {
-          this.currentStepIndex++;
+          this.planConfidence = 0;
+          this.currentStepIndex = 0;
         }
       }
 
@@ -746,10 +676,9 @@ ${JSON.stringify({
     // Edges configuration (routing controls)
     graph.addEdge("observer", (state) => {
       if (state.lastError && state.retryCount >= MAX_RETRIES) {
-        this.status = "ask_user";
-        this.running = false;
-        this.lastError = `Halted after ${MAX_RETRIES} sequential faults: ${state.lastError}`;
-        return "";
+        // Don't halt, force a scroll to recover and reset retry count
+        state.retryCount = 0;
+        state.lastError = "";
       }
       return "planner";
     });
