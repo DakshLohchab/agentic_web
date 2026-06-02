@@ -52,7 +52,18 @@ Return ONLY valid JSON: {"item_name": "...", "price": "...", "stock_status": "..
 Text:
 ${rawText.substring(0, 6000)}`;
 
-  const extracted = await callLLM("You are a data extractor.", prompt, null);
+  const extractedRaw = await callLLM("You are a data extractor.", prompt, null);
+  
+  let extracted: any = {};
+  try {
+    let cleanString = (extractedRaw as string).trim();
+    if (cleanString.includes("\`\`\`")) {
+      cleanString = cleanString.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
+    }
+    extracted = JSON.parse(cleanString);
+  } catch (e) {
+    console.error("Failed to parse LLM extraction in updater", e);
+  }
   
   if (extracted && extracted.price) {
     await KnowledgeDatastore.updateItem({

@@ -13,6 +13,24 @@ import { detectAndClearOverlays } from "../utils/overlay-nuker";
 import { mcpBridge } from "../utils/native-bridge";
 import { speedRenderer } from "../utils/net-blocker";
 
+function cleanAndParseJSON(rawResponse: string) {
+  try {
+    // Strip out markdown code block wrappers if they exist
+    let cleanString = rawResponse.trim();
+    if (cleanString.includes("\`\`\`")) {
+      cleanString = cleanString.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
+    }
+    return JSON.parse(cleanString);
+  } catch (error) {
+    console.error("CRITICAL AGENT ERROR: Failed to parse planner schema.", error, rawResponse);
+    // Return a structured emergency action to halt rather than letting it idle loop
+    return {
+      taskChecklist: [],
+      actions: [{ action: "ask_user", result: "My planner generated an invalid JSON structure. Please check my logs." }]
+    };
+  }
+}
+
 function fuzzyMatchElement(hint: string, interactables: any[]) {
   if (!hint) return null;
   const needle = hint.toLowerCase();
@@ -301,6 +319,10 @@ ${JSON.stringify({
         fullUserMessage += "\nScreenshot attached for spatial layout reference. Use it to understand element positions and visual groupings that may not be obvious from the DOM alone.\n";
       }
 
+      if (!state.taskChecklist || state.taskChecklist.length === 0) {
+        fullUserMessage += "\n[CRITICAL INITIALIZATION REQUIREMENT] Your taskChecklist is currently empty. You MUST generate a comprehensive global_plan and taskChecklist in this step. You are STRICTLY FORBIDDEN from generating any navigation ('navigate') or interaction actions ('click', 'type') in this turn. Use the 'wait' action (value: 1) to formalize your plan.\n";
+      }
+
       // Truncate context if we are in a timeout recovery state
       if (this.timeoutCount > 0) {
          fullUserMessage = fullUserMessage.substring(0, 15000) + "\n...[TRUNCATED DUE TO TIMEOUT]";
@@ -309,10 +331,11 @@ ${JSON.stringify({
       let action: any;
       try {
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("LLM_TIMEOUT")), 45000));
-        action = await Promise.race([
+        const rawAction = await Promise.race([
           callLLM(SYSTEM_PROMPT, fullUserMessage, imageBase64),
           timeoutPromise
         ]);
+        action = cleanAndParseJSON(rawAction as string);
         this.timeoutCount = 0; // Reset on success
       } catch (err: any) {
         if (err.message === "LLM_TIMEOUT") {
@@ -407,6 +430,14 @@ ${JSON.stringify({
       const payload = state.nextAction;
       const actions = payload.actions || [payload]; // Fallback for legacy schema
       
+      if (!actions || actions.length === 0) {
+        this.status = "ask_user";
+        this.lastError = "The planning cycle produced an empty action list. I need more specific instructions.";
+        this.running = false;
+        await this.pushUpdate();
+        return { status: "ask_user", running: false, lastError: this.lastError };
+      }
+      
       let currentHistory = [...state.history];
       let needsLoad = false;
       let finalActionDetail = "";
@@ -418,6 +449,23 @@ ${JSON.stringify({
         const action = actions[i];
         const type = action.action;
         finalActionDetail = formatActionDetail(action);
+        
+        if ((!state.taskChecklist || state.taskChecklist.length === 0) && ["navigate", "click", "type", "press"].includes(type)) {
+           this.lastError = "BLOCKED: You must populate your taskChecklist before interacting or navigating.";
+           currentHistory.push({
+             thought: state.lastThought,
+             action: type,
+             detail: finalActionDetail,
+             outcome: "ERROR: " + this.lastError
+           });
+           return {
+             history: currentHistory,
+             step: state.step + 1,
+             lastAction: "Blocked " + type,
+             retryCount: state.retryCount + 1,
+             lastError: this.lastError
+           };
+        }
         
         await this.pushUpdate({ action });
 

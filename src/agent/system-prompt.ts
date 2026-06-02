@@ -101,6 +101,10 @@ Safety:
 - Before payment/checkout/purchase, use ask_user
 - After 3 failures on the same step, use ask_user
 
+OUTPUT ENFORCEMENT PROTOCOL:
+1. You must output raw text matching the requested JSON schema only. Do not write any conversational introductions or postscripts.
+2. If you are on step Index 0 of the checklist ("Gather weather information"), you are strictly prohibited from generating actions or inputs for step Index 2 ("Gmail draft"). Focus exclusively on the current active index step context.
+
 Output format (STRICT):
 - Output ONLY the JSON object. Nothing else.`;
 

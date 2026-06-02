@@ -2,13 +2,7 @@ import { errorFromResponse } from "./api-errors";
 import { ExtensionSettings } from "../utils/storage";
 
 function extractJson(text: string): any {
-  const trimmed = (text || "").trim();
-  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = fence ? fence[1].trim() : trimmed;
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("No JSON object in LLM response");
-  return JSON.parse(raw.slice(start, end + 1));
+  return text;
 }
 
 function makeTimeout(timeoutMs = 30000) {
