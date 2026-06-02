@@ -238,10 +238,16 @@ export class AgentLoop {
       const { hint, autoAction } = getHeuristicHint(state.snapshot, state.goal, state.history);
 
       if (shouldRunAutoAction(autoAction, state.history)) {
-        return {
-          nextAction: autoAction,
-          lastThought: "(auto) " + (hint || "")
-        };
+        // STRICT GUARD: Do not allow heuristic navigations or interactions if the global plan is empty.
+        // The agent MUST use the LLM to generate the taskChecklist on step 0.
+        if ((!state.taskChecklist || state.taskChecklist.length === 0) && autoAction.action !== "wait") {
+          console.log("[Agentic] Ignored autoAction because taskChecklist is empty. Forcing LLM planning phase.");
+        } else {
+          return {
+            nextAction: autoAction,
+            lastThought: "(auto) " + (hint || "")
+          };
+        }
       }
 
       if (this.plannedSteps && this.plannedSteps.length > 0 && this.planConfidence > 0.7 && this.currentStepIndex < this.plannedSteps.length) {
@@ -441,6 +447,7 @@ ${JSON.stringify({
       let currentHistory = [...state.history];
       let needsLoad = false;
       let finalActionDetail = "";
+      let updatedScratchpad = { ...state.globalScratchpad };
 
       for (let i = 0; i < actions.length; i++) {
         if (!this.running) {
@@ -465,6 +472,45 @@ ${JSON.stringify({
              retryCount: state.retryCount + 1,
              lastError: this.lastError
            };
+        }
+        
+        // Action-Blocker for Future Steps
+        if (type === "navigate" && action.url && state.taskChecklist && state.taskChecklist.length > 0) {
+           const currentIndex = state.currentChecklistIndex || 0;
+           const currentTask = state.taskChecklist[currentIndex];
+           if (currentTask && currentTask.status !== "completed") {
+              const taskText = currentTask.task.toLowerCase();
+              const urlLower = action.url.toLowerCase();
+              
+              const domainRules = [
+                 { domain: "mail.google.com", keywords: ["email", "gmail", "mail", "send", "compose"] },
+                 { domain: "docs.google.com", keywords: ["doc", "write", "document"] },
+                 { domain: "docs.new", keywords: ["doc", "write", "document"] },
+                 { domain: "sheets.new", keywords: ["sheet", "spreadsheet"] }
+              ];
+              
+              for (const rule of domainRules) {
+                 if (urlLower.includes(rule.domain)) {
+                    const isRelatedToCurrent = rule.keywords.some(kw => taskText.includes(kw));
+                    if (!isRelatedToCurrent) {
+                       this.lastError = "ERROR: You attempted to execute an action for a future step. Complete the current data-gathering step first and save it to your scratchpad.";
+                       currentHistory.push({
+                         thought: state.lastThought,
+                         action: type,
+                         detail: finalActionDetail,
+                         outcome: "BLOCKED: " + this.lastError
+                       });
+                       return {
+                         history: currentHistory,
+                         step: state.step + 1,
+                         lastAction: "Blocked premature navigation to " + action.url,
+                         retryCount: state.retryCount + 1,
+                         lastError: this.lastError
+                       };
+                    }
+                 }
+              }
+           }
         }
         
         await this.pushUpdate({ action });
@@ -750,11 +796,20 @@ ${JSON.stringify({
           finalActionDetail += " → submitted";
         }
 
+        let actionOutcome = "ok";
+        if (result && result.text) {
+          actionOutcome = `Extracted Text Data: "${result.text}"`;
+          // Automatically stage it into cross-tab memory using the goal context or tag
+          const scratchKey = `extracted_data_step_${state.currentChecklistIndex}`;
+          updatedScratchpad[scratchKey] = result.text;
+          this.globalScratchpad[scratchKey] = result.text;
+        }
+
         currentHistory.push({
           thought: state.lastThought,
           action: type,
           detail: finalActionDetail,
-          outcome: "ok"
+          outcome: actionOutcome
         });
 
         needsLoad = needsLoad || (type === "navigate" || type === "click" || type === "press" || action?.submit === true);
@@ -784,11 +839,33 @@ ${JSON.stringify({
         }
       }
 
+      let updatedChecklist = [...(state.taskChecklist || [])];
+      let nextChecklistIndex = state.currentChecklistIndex !== undefined ? state.currentChecklistIndex : 0;
+      
+      if (actions.length > 0) {
+        const lastAction = actions[actions.length - 1];
+        const type = lastAction.action;
+        
+        if (type === "store_memory" || type === "extract" || type === "call_api" || type === "done" || (type === "click" && finalActionDetail.toLowerCase().includes("send"))) {
+          if (updatedChecklist[nextChecklistIndex] && updatedChecklist[nextChecklistIndex].status !== "completed") {
+            updatedChecklist[nextChecklistIndex].status = "completed";
+            nextChecklistIndex = Math.min(updatedChecklist.length - 1, nextChecklistIndex + 1);
+            console.log(`[Agentic Engine] Step ${state.currentChecklistIndex} marked COMPLETED. Index advanced to ${nextChecklistIndex}`);
+            
+            this.taskChecklist = updatedChecklist;
+            this.currentChecklistIndex = nextChecklistIndex;
+          }
+        }
+      }
+
       return {
         history: currentHistory,
         step: state.step + 1,
         lastAction: finalActionDetail,
-        retryCount: 0
+        retryCount: 0,
+        globalScratchpad: updatedScratchpad,
+        taskChecklist: updatedChecklist,
+        currentChecklistIndex: nextChecklistIndex
       };
     });
 

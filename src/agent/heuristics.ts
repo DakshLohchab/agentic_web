@@ -88,16 +88,7 @@ export function getHeuristicHint(
   const hints: string[] = [];
   let autoAction: any = null;
 
-  const isGmailGoal = (goal || "").toLowerCase().includes("email") || (goal || "").toLowerCase().includes("mail") || (goal || "").toLowerCase().includes("gmail") || (goal || "").toLowerCase().includes("draft");
-
   if (!url.includes("youtube.com") && !url.includes("mail.google.com")) {
-    if (isGmailGoal) {
-      hints.push("Navigating directly to Gmail to draft the email.");
-      return {
-        hint: "Navigating directly to Gmail to draft the email.",
-        autoAction: { action: "navigate", url: "https://mail.google.com" }
-      };
-    }
     return { hint: null, autoAction: null };
   }
 

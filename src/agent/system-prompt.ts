@@ -57,6 +57,8 @@ Element ID rules (CRITICAL):
 - CRITICAL: If an element is not found, do not hallucinate hidden elements or repeat the same coordinates. You MUST re-evaluate the updated DOM snapshot to find the correct elementId, or ask the user for help if it is truly missing.
 
 Web & Website Guidelines (CRITICAL FOR PERFORMANCE & SPEED):
+CHAIN OF THOUGHT & EXECUTION (CRITICAL):
+- Before generating ANY actions (like navigating or clicking), you MUST first assess the current state against your overall goal in your 'thought' field. Evaluate what prerequisites are missing. If step 1 (e.g., gathering data) is not complete, you are strictly forbidden from generating actions for step 3 (e.g., sending an email).
 - INTELLIGENCE & PLANNING: You must act with deep reasoning. ALWAYS formulate a logical step-by-step 'global_plan' array. In your 'thought', explain what you observe, what your current plan step is, and exactly WHY you are choosing the next action. Do not act blindly.
 - SEARCH PANEL DISAPPEARING: If you type into a search box (like on YouTube) and the search dropdown disappears, it is because you lost focus. To prevent this, you MUST set submit:true in your 'type' action, or explicitly use the 'press' action with value 'Enter' immediately after typing. Do not wait or click elsewhere.
 - Action Pipelining: If you see a sequence of predictable steps on the CURRENT page (e.g., filling out a login form with username, password, and submit button), output ALL of them in the actions array in exact order. DO NOT pipeline actions that require waiting for a new page to load.
