@@ -72,6 +72,9 @@ export class AgentLoop {
   verifyAttempts = 0;
   timeoutCount = 0;
   pastExperience: Experience | null = null;
+  globalScratchpad: Record<string, string> = {};
+  taskChecklist: { task: string; dependencies: string[]; status: "pending" | "in_progress" | "completed"; }[] = [];
+  currentChecklistIndex = 0;
 
   constructor(sharedMemory: Record<string, any> = {}) {
     this.memory = sharedMemory;
@@ -89,7 +92,10 @@ export class AgentLoop {
       lastError: this.lastError,
       historyLength: this.history.length,
       global_plan: this.globalPlan,
-      current_step_index: this.currentStepIndex
+      current_step_index: this.currentStepIndex,
+      globalScratchpad: this.globalScratchpad,
+      taskChecklist: this.taskChecklist,
+      currentChecklistIndex: this.currentChecklistIndex
     };
   }
 
@@ -127,6 +133,9 @@ export class AgentLoop {
       this.groundingImage = null;
       this.verifyAttempts = 0;
       this.timeoutCount = 0;
+      this.globalScratchpad = {};
+      this.taskChecklist = [];
+      this.currentChecklistIndex = 0;
       this.pastExperience = await ExperienceStore.findSimilarExperience(goal);
     }
     this.running = true;
@@ -281,6 +290,9 @@ Current State:
 ${JSON.stringify({
   global_plan: state.globalPlan,
   current_step_index: state.currentStepIndex,
+  taskChecklist: state.taskChecklist,
+  currentChecklistIndex: state.currentChecklistIndex,
+  globalScratchpad: state.globalScratchpad,
   last_successful_action: state.history[state.history.length - 1]?.detail || "None"
 }, null, 2)}
 `;
@@ -382,6 +394,9 @@ ${JSON.stringify({
         lastThought: action.thought || "",
         globalPlan: action.global_plan || state.globalPlan,
         currentStepIndex: action.current_step_index !== undefined ? action.current_step_index : state.currentStepIndex,
+        globalScratchpad: action.globalScratchpad || state.globalScratchpad,
+        taskChecklist: action.taskChecklist || state.taskChecklist,
+        currentChecklistIndex: action.currentChecklistIndex !== undefined ? action.currentChecklistIndex : state.currentChecklistIndex,
         actionHistory: newActionHistory
       };
     });
@@ -776,7 +791,10 @@ ${JSON.stringify({
           currentStepIndex: this.currentStepIndex,
           actionHistory: this.actionHistory,
           snapshot: null,
-          nextAction: null
+          nextAction: null,
+          globalScratchpad: this.globalScratchpad,
+          taskChecklist: this.taskChecklist,
+          currentChecklistIndex: this.currentChecklistIndex
         },
         async (stateUpdates) => {
           this.history = stateUpdates.history;
@@ -788,6 +806,9 @@ ${JSON.stringify({
           this.globalPlan = stateUpdates.globalPlan;
           this.currentStepIndex = stateUpdates.currentStepIndex;
           this.actionHistory = stateUpdates.actionHistory;
+          this.globalScratchpad = stateUpdates.globalScratchpad || this.globalScratchpad;
+          this.taskChecklist = stateUpdates.taskChecklist || this.taskChecklist;
+          this.currentChecklistIndex = stateUpdates.currentChecklistIndex !== undefined ? stateUpdates.currentChecklistIndex : this.currentChecklistIndex;
           await this.pushUpdate();
         }
       );

@@ -14,6 +14,13 @@ export interface AgentState {
   actionHistory: string[];
   snapshot: any;
   nextAction: any;
+  globalScratchpad: Record<string, string>;
+  taskChecklist: {
+    task: string;
+    dependencies: string[];
+    status: "pending" | "in_progress" | "completed";
+  }[];
+  currentChecklistIndex: number;
 }
 
 export type NodeFunction = (state: AgentState) => Promise<Partial<AgentState>>;
