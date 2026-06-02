@@ -147,6 +147,28 @@ async function handleMessage(message: any, sendResponse: (response: any) => void
         return;
       }
 
+      case "USER_REPLY": {
+        const { tabId, reply } = message;
+        if (!tabId || !reply) throw new Error("Missing tabId or reply");
+        
+        const agent = Swarm.getAgent(tabId);
+        if (agent) {
+           agent.history.push({
+             action: "user_reply",
+             detail: `User said: ${reply}`,
+             thought: "Received user input.",
+             outcome: "ok"
+           });
+           agent.start(tabId, agent.goal, true).catch(err => {
+             console.error(`[Swarm] Agent error on tab ${tabId}:`, err);
+           });
+        } else {
+           throw new Error("Agent not found for tabId");
+        }
+        sendResponse({ ok: true });
+        return;
+      }
+
       case MSG.TEST_LLM:
       case "TEST_LLM": {
         const keepAlive = startTestKeepAlive();

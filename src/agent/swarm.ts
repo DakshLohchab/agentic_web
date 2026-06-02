@@ -48,6 +48,10 @@ class SwarmCoordinator {
     }
     return states;
   }
+
+  getAgent(tabId: number) {
+    return this.agents.get(tabId);
+  }
 }
 
 export const Swarm = new SwarmCoordinator();

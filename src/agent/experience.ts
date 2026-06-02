@@ -7,7 +7,10 @@ export interface Experience {
 export class ExperienceStore {
   static async getExperiences(): Promise<Experience[]> {
     const res = await chrome.storage.local.get("experience_db");
-    return res.experience_db || [];
+    if (res.experience_db && Array.isArray(res.experience_db)) {
+      return res.experience_db;
+    }
+    return [];
   }
 
   static async saveExperience(goal: string, history: Array<{ action: string; detail: string }>) {
@@ -42,7 +45,7 @@ export class ExperienceStore {
     const experiences = await this.getExperiences();
     if (experiences.length === 0) return null;
 
-    const tokenize = (text: string) => text.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+    const tokenize = (text: string) => (text || "").toLowerCase().split(/\W+/).filter(w => w.length > 2);
     const targetTokens = new Set(tokenize(currentGoal));
     
     if (targetTokens.size === 0) return null;

@@ -30,6 +30,22 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [forceNewTab, setForceNewTab] = useState(false);
+  const [replyText, setReplyText] = useState("");
+
+  const handleReply = async (tabId: number) => {
+    if (!replyText.trim()) return;
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "USER_REPLY", tabId, reply: replyText });
+      if (res?.ok) {
+        setReplyText("");
+        fetchClusterStatus();
+      } else {
+        setError(res?.error || "Failed to send reply.");
+      }
+    } catch (err: any) {
+      setError(err?.message || "Failed to send reply.");
+    }
+  };
 
   // Poll for tab access details when the goal changes
   const checkTabAccess = useCallback(async (currentGoal: string) => {
@@ -322,6 +338,25 @@ export default function App() {
                     {worker.lastError && (
                       <div className="swarm-details error-line">
                         <strong>Error:</strong> {worker.lastError}
+                      </div>
+                    )}
+                    {worker.status === "ask_user" && (
+                      <div className="ask-user-container" style={{ marginTop: "10px", display: "flex", gap: "5px" }}>
+                        <input 
+                          type="text" 
+                          value={replyText} 
+                          onChange={(e) => setReplyText(e.target.value)} 
+                          placeholder="Your reply..." 
+                          style={{ flex: 1, padding: "5px", borderRadius: "4px", border: "1px solid #444", background: "#222", color: "#fff" }} 
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleReply(Number(tabId)); }}
+                        />
+                        <button 
+                          onClick={() => handleReply(Number(tabId))} 
+                          className="btn btn-primary" 
+                          style={{ padding: "5px 10px", minWidth: "auto", fontSize: "0.9rem" }}
+                        >
+                          Send
+                        </button>
                       </div>
                     )}
                   </div>

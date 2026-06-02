@@ -107,28 +107,30 @@ export class AgentLoop {
 
 
 
-  async start(tabId: number, goal: string) {
+  async start(tabId: number, goal: string, isResume = false) {
     this.tabId = tabId;
-    this.goal = goal;
-    this.history = [];
-    this.step = 0;
-    this.retryCount = 0;
+    if (!isResume) {
+      this.goal = goal;
+      this.history = [];
+      this.step = 0;
+      this.retryCount = 0;
+      this.lastError = "";
+      this.lastAction = "";
+      this.globalPlan = [];
+      this.currentStepIndex = 0;
+      this.actionHistory = [];
+      this.lastActionRect = null;
+      this.forceFullSnapshot = false;
+      this.plannedSteps = [];
+      this.planConfidence = 0;
+      this.hasGroundingImage = false;
+      this.groundingImage = null;
+      this.verifyAttempts = 0;
+      this.timeoutCount = 0;
+      this.pastExperience = await ExperienceStore.findSimilarExperience(goal);
+    }
     this.running = true;
     this.status = "running";
-    this.lastError = "";
-    this.lastAction = "";
-    this.globalPlan = [];
-    this.currentStepIndex = 0;
-    this.actionHistory = [];
-    this.lastActionRect = null;
-    this.forceFullSnapshot = false;
-    this.plannedSteps = [];
-    this.planConfidence = 0;
-    this.hasGroundingImage = false;
-    this.groundingImage = null;
-    this.verifyAttempts = 0;
-    this.timeoutCount = 0;
-    this.pastExperience = await ExperienceStore.findSimilarExperience(goal);
     await speedRenderer.enable(tabId);
     await this.pushUpdate();
 
@@ -337,6 +339,28 @@ ${JSON.stringify({
 
       const actionHash = `${action.action}-${action.elementId}-${action.value}`;
       const newActionHistory = [...state.actionHistory, actionHash];
+      
+      let consecutiveScrolls = 0;
+      for (let i = newActionHistory.length - 1; i >= 0; i--) {
+        if (newActionHistory[i].startsWith("scroll-")) {
+          consecutiveScrolls++;
+        } else {
+          break;
+        }
+      }
+
+      if (consecutiveScrolls > 2) {
+        this.status = "ask_user";
+        this.lastError = "I have scrolled multiple times but cannot find the target element. Please help or provide more specific instructions.";
+        this.running = false;
+        await this.pushUpdate();
+        return {
+          nextAction: { action: "ask_user", result: this.lastError },
+          lastThought: "Too many consecutive scrolls. Asking user for help.",
+          actionHistory: newActionHistory
+        };
+      }
+
       const lastThree = newActionHistory.slice(-3);
       
       if (lastThree.length === 3 && lastThree.every(h => h === actionHash)) {
@@ -373,6 +397,9 @@ ${JSON.stringify({
       let finalActionDetail = "";
 
       for (let i = 0; i < actions.length; i++) {
+        if (!this.running) {
+          return { status: "stopped", running: false, lastThought: "Halted by user." };
+        }
         const action = actions[i];
         const type = action.action;
         finalActionDetail = formatActionDetail(action);
@@ -483,7 +510,7 @@ ${JSON.stringify({
         }
 
         if (type === "store_memory") {
-          this.memory[action.value] = action.result;
+          this.memory[action.value] = action.data || action.result;
           currentHistory.push({
             thought: state.lastThought,
             action: type,
@@ -587,6 +614,37 @@ ${JSON.stringify({
           }
         }
 
+        if (type === "navigate") {
+          try {
+            await chrome.tabs.update(tabId, { url: action.url });
+            this.forceFullSnapshot = true;
+            this.hasGroundingImage = false;
+            this.groundingImage = null;
+            currentHistory.push({
+              thought: state.lastThought,
+              action: type,
+              detail: finalActionDetail,
+              outcome: "ok"
+            });
+            needsLoad = true;
+            continue;
+          } catch (err: any) {
+             currentHistory.push({
+               thought: state.lastThought,
+               action: type,
+               detail: finalActionDetail,
+               outcome: `Navigation Error: ${err.message || String(err)}`
+             });
+             return {
+               history: currentHistory,
+               step: state.step + 1,
+               lastAction: finalActionDetail,
+               retryCount: state.retryCount + 1,
+               lastError: err.message || String(err)
+             };
+          }
+        }
+
         // Standard DOM Actions
         const result = await sendToTab(tabId, {
           type: MSG.EXECUTE_ACTION,
@@ -609,12 +667,6 @@ ${JSON.stringify({
             return { status: "blocked", running: false, lastError: msg };
           }
           throw new Error(msg);
-        }
-
-        if (type === "navigate") {
-          this.forceFullSnapshot = true;
-          this.hasGroundingImage = false;
-          this.groundingImage = null;
         }
 
         if (result.x !== undefined && result.y !== undefined) {
