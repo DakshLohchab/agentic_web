@@ -311,6 +311,24 @@ export class AgentLoop {
         obstructionHint = "\n[SYSTEM FLAG] The last action failed. A layout obstruction is highly likely. You may want to choose alternative element interaction routes or emit the 'clear_obstacle' action to forcibly remove visual blockers.\n";
       }
 
+      let memoryHint = "";
+      try {
+        const domain = state.snapshot?.url ? new URL(state.snapshot.url).hostname : "unknown";
+        const memoryRes = await mcpBridge.executeTool("query_memory", {
+          domain,
+          goal: state.goal
+        });
+        
+        if (memoryRes && memoryRes.content && memoryRes.content.length > 0) {
+          const text = memoryRes.content[0].text;
+          if (text !== "No matching memory found.") {
+            memoryHint = `\nMEMORY RECALL: You have successfully completed this task on this domain before. The exact action required is: ${text}. You should strongly prefer executing this exact action if the target element exists in the current snapshot.\n`;
+          }
+        }
+      } catch(e) {
+        // Silently catch MCP query errors
+      }
+
       const stateContext = `
 Current State:
 ${JSON.stringify({
@@ -322,7 +340,7 @@ ${JSON.stringify({
   last_successful_action: state.history[state.history.length - 1]?.detail || "None"
 }, null, 2)}
 `;
-      let fullUserMessage = userMessage + stateContext + obstructionHint;
+      let fullUserMessage = userMessage + stateContext + obstructionHint + memoryHint;
       if (state.step === 0 && imageBase64) {
         fullUserMessage += "\nScreenshot attached for spatial layout reference. Use it to understand element positions and visual groupings that may not be obvious from the DOM alone.\n";
       }
@@ -931,6 +949,31 @@ ${JSON.stringify({
           history: currentHistory,
           snapshot: newSnapshot
         };
+      }
+
+      // Success Condition: Commit to long-term spatial memory
+      try {
+        const domain = state.snapshot?.url ? new URL(state.snapshot.url).hostname : "unknown";
+        
+        // Quick hash of the semantic tree layout
+        let hash = 0;
+        const treeStr = state.snapshot?.semanticTree || "";
+        for (let i = 0; i < treeStr.length; i++) {
+          const char = treeStr.charCodeAt(i);
+          hash = (hash << 5) - hash + char;
+          hash |= 0;
+        }
+        const layout_hash = hash.toString(36);
+
+        // Fire-and-forget
+        mcpBridge.executeTool("store_memory", {
+          domain,
+          goal: state.goal,
+          layout_hash,
+          winning_action: JSON.stringify(lastAction)
+        }).catch(err => console.warn("Failed to store successful action in memory:", err));
+      } catch (e) {
+        // Silently catch URL parsing or other sync errors so we don't crash the loop
       }
 
       return { snapshot: newSnapshot };

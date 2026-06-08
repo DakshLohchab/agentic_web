@@ -38,7 +38,8 @@ const SERVERS = [
   '../property-mcp-server/property-mcp-server.ts',
   '../research-mcp-server/research-mcp-server.ts',
   '../tech-mcp-server/tech-mcp-server.ts',
-  '../ecommerce-mcp-server/ecommerce-mcp-server.ts'
+  '../ecommerce-mcp-server/ecommerce-mcp-server.ts',
+  '../memory-mcp-server/memory-mcp-server.ts'
 ];
 
 // Tool routing map: tool_name -> child_process reference
