@@ -47,6 +47,12 @@ function isInteractive(el: HTMLElement): boolean {
 
   if (isStandardInteractive) return true;
 
+  // Google Maps and other SPAs use jsaction attributes for interactivity
+  if (el.hasAttribute("jsaction") || el.hasAttribute("data-trackingid") || el.hasAttribute("guidedhelpid")) return true;
+  // Elements with tabindex="0" that are not native inputs are explicitly made keyboard-interactive
+  const tabIndex = el.getAttribute("tabindex");
+  if (tabIndex === "0" && !["a", "button", "input", "textarea", "select"].includes(el.tagName.toLowerCase())) return true;
+
   // Check common click handler attributes
   if ((el as any).onclick || el.hasAttribute("onclick") || el.hasAttribute("@click") || el.hasAttribute("v-on:click")) return true;
 
@@ -56,6 +62,12 @@ function isInteractive(el: HTMLElement): boolean {
 function labelText(el: HTMLElement): string {
   const aria = el.getAttribute("aria-label");
   if (aria) return aria.trim();
+  
+  // Google Maps uses data-tooltip and aria-label on action buttons
+  const dataTooltip = el.getAttribute("data-tooltip");
+  if (dataTooltip) return dataTooltip.trim();
+  const dataValue = el.getAttribute("data-value");
+  if (dataValue) return dataValue.trim();
   if (el.id) {
     const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
     if (label) return label.textContent?.trim() || "";
@@ -365,6 +377,20 @@ function findElement(elementId: string | null | undefined, snapshot: any, action
       }
     }
     if (best) return best;
+
+    // Deep child text search — for Google Maps where text is in nested spans
+    if (needle && !best) {
+      for (const item of snapshot.interactables) {
+        const el = elementMap.get(item.id);
+        if (!el) continue;
+        const deepText = (el.innerText || el.textContent || "").toLowerCase().trim();
+        if (deepText === needle || deepText.startsWith(needle)) {
+          best = el;
+          break;
+        }
+      }
+      if (best) return best;
+    }
   }
 
   const clickable = snapshot.interactables.find((i: any) => i.tag === "button" || i.role === "button");
@@ -517,7 +543,7 @@ async function executeAction(payload: any) {
       case "press": {
         const el = findElement(elementId, snapshot, payload) || document.activeElement as HTMLElement;
         if (!el) throw new Error("No element for press");
-        el.scrollIntoView(payload.fastPath ? { block: "center", behavior: "instant" } : { block: "center" });
+        el.scrollIntoView({ block: "center", behavior: "instant" });
         el.focus();
         const key = value || "Enter";
         const shifted = await verifyDOMShift(() => {
@@ -540,14 +566,16 @@ async function executeAction(payload: any) {
         if (blockReason) {
           return { ok: false, blocked: true, error: blockReason };
         }
-        el.scrollIntoView(payload.fastPath ? { block: "center", behavior: "instant" } : { block: "center" });
+        el.scrollIntoView({ block: "center", behavior: "instant" });
         const rect = el.getBoundingClientRect();
         const x = Math.round(rect.left + rect.width / 2);
         const y = Math.round(rect.top + rect.height / 2);
         
         const topEl = document.elementFromPoint(x, y);
         if (topEl && !el.contains(topEl) && !topEl.contains(el)) {
-          return { ok: false, blocked: true, error: "BLOCKED: Element is obscured by another element. Use 'clear_obstacle' to close modals/cookie banners, or explicitly click the blocking element first." };
+          console.warn(`Element might be obscured by ${topEl.tagName}. Proceeding anyway to allow DEBUGGER_CLICK to resolve it.`);
+          // We no longer return blocked: true here, because Google Maps uses sibling ripple divs
+          // that technically obscure the SVG button but should receive the click.
         }
 
         const shifted = await verifyDOMShift(() => {
@@ -572,7 +600,7 @@ async function executeAction(payload: any) {
         if (sensitive.test(ph) && value) {
           return { ok: false, error: "Refusing to type into sensitive field" };
         }
-        el.scrollIntoView(payload.fastPath ? { block: "center", behavior: "instant" } : { block: "center" });
+        el.scrollIntoView({ block: "center", behavior: "instant" });
         el.focus();
 
         // Safety gate: Wait 100ms for DOM layout and focus state to settle
@@ -635,6 +663,7 @@ async function executeAction(payload: any) {
           let extractedText = "";
           try {
             // Attempt dynamic import of PDF.js from CDN (may be blocked by extension CSP)
+            // @ts-ignore
             const pdfjsLib = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js");
             pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
             const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;

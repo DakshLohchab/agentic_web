@@ -307,8 +307,6 @@ export default function App() {
             </Magnetic>
           </div>
         </section>
-
-          </div>
         )}
 
         {/* Chat / Conversation Thread */}

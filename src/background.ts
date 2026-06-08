@@ -140,27 +140,17 @@ async function handleMessage(message: any, sendResponse: (response: any) => void
         
         await chrome.debugger.attach({ tabId }, "1.3");
         try {
-          // Validate and adjust coordinates to account for dynamic viewport scrolls and absolute overlays
+          // Validate and adjust coordinates to account for visual viewport scaling (like mobile pinch zoom)
           let finalX = x;
           let finalY = y;
-          const res: any = await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
-             expression: `
-               (() => {
-                  const el = document.elementFromPoint(${x}, ${y});
-                  if (!el) return {x: ${x}, y: ${y}};
-                  const rect = el.getBoundingClientRect();
-                  return {
-                     x: rect.left + rect.width / 2,
-                     y: rect.top + rect.height / 2
-                  };
-               })()
-             `,
-             returnByValue: true
-          });
-          
-          if (res?.result?.value) {
-             finalX = res.result.value.x;
-             finalY = res.result.value.y;
+          try {
+            const { result: metrics }: any = await chrome.debugger.sendCommand({ tabId }, "Page.getLayoutMetrics");
+            if (metrics && metrics.visualViewport) {
+              finalX = x * metrics.visualViewport.scale;
+              finalY = y * metrics.visualViewport.scale;
+            }
+          } catch(e) {
+             // Ignore if Page domain is not enabled or fails
           }
 
           await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {

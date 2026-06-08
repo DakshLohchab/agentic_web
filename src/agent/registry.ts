@@ -138,6 +138,27 @@ const FALLBACK_SEED: SiteProfile[] = [
       "Stop and trigger ask_user before checkout or payment screens."
     ],
     anti_patterns: []
+  },
+  {
+    domain: "google.com/maps",
+    name: "Google Maps",
+    selectors: {
+      directions_button: "button with text 'Directions' or aria-label containing 'Directions'",
+      place_panel: "div role='main' containing place details"
+    },
+    rules: [
+      "The Directions button is always visible in the left sidebar panel when viewing a place. It has the text 'Directions' and a car/arrow icon. It is NOT below the fold — do NOT scroll to find it.",
+      "To click the Directions button, use the 'click' action with the elementId of the button whose text includes 'Directions'.",
+      "After clicking Directions, a 'From' input field appears at the top of the left panel. Type the starting location into that input.",
+      "The element with text 'Directions' is typically a button or anchor element. If it does not appear in the Semantic Accessibility Tree, use the 'extract' action first to confirm the page text contains 'Directions', then use a 'click' action with matchText: 'Directions'.",
+      "Do NOT scroll down looking for the Directions button. It is always visible at the top of the place card.",
+      "If the Directions button elementId is not found in the snapshot, fallback to: { action: 'click', matchText: 'Directions' } which will fuzzy-match by text."
+    ],
+    anti_patterns: [
+      "Do NOT use scroll to look for the Directions button — it is always visible in the current viewport",
+      "Do NOT navigate away from the page to find directions — use the Directions button on the current page",
+      "Do NOT repeat the same scroll action more than once without a click attempt in between"
+    ]
   }
 ];
 
@@ -174,8 +195,21 @@ class SiteRegistry {
       return profile;
     }
 
+    // Check for path-specific profiles first (e.g., google.com/maps)
+    const pathSpecific = FALLBACK_SEED.find(seed => {
+      if (!seed.domain.includes('/')) return false;
+      const [seedHost, ...pathParts] = seed.domain.split('/');
+      const seedPath = pathParts.join('/');
+      return (domain === seedHost || domain.endsWith('.' + seedHost)) && url.includes('/' + seedPath);
+    });
+    if (pathSpecific) {
+      this.cache.set(domain, pathSpecific);
+      await chrome.storage.local.set({ [storageKey]: pathSpecific });
+      return pathSpecific;
+    }
+
     const fallback = FALLBACK_SEED.find(
-      seed => domain === seed.domain || domain.endsWith("." + seed.domain)
+      seed => !seed.domain.includes('/') && (domain === seed.domain || domain.endsWith("." + seed.domain))
     );
 
     if (fallback) {

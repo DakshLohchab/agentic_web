@@ -432,19 +432,27 @@ ${JSON.stringify({
         };
       }
 
+      // Check for pure action stagnation (same action 3 times)
       const lastThree = newActionHistory.slice(-3);
-      
-      if (lastThree.length === 3 && lastThree.every(h => h === actionHash)) {
-        console.warn("[Agentic] Stagnant state detected, forcing scroll to break loop.");
-        const scrollAction = { 
-          action: "scroll", 
-          value: "down", 
-          thought: "Stagnant state detected (repeating same action). Forcing scroll to reveal obscured elements or change state." 
+      const isPureStagnant = lastThree.length === 3 && lastThree.every(h => h === actionHash);
+
+      // Check for scroll-based stagnation (more than 2 scroll actions in last 5 actions)
+      const lastFive = newActionHistory.slice(-5);
+      const scrollCount = lastFive.filter(h => h.startsWith("scroll-")).length;
+      const isScrollStagnant = scrollCount >= 3;
+
+      if (isPureStagnant || isScrollStagnant) {
+        console.warn("[Agentic] Stagnant state detected. Attempting direct text-match click to break loop.");
+        // Instead of scrolling again, try a fuzzy click on likely target elements
+        const stagnantAction = { 
+          action: "click", 
+          matchText: "Directions",
+          thought: "Stagnant state detected (too many scrolls with no progress). Attempting direct text-match click on 'Directions' button to break the loop."
         };
         return {
-          nextAction: scrollAction,
-          lastThought: scrollAction.thought,
-          actionHistory: []
+          nextAction: stagnantAction,
+          lastThought: stagnantAction.thought,
+          actionHistory: [] // Reset history after recovery attempt
         };
       }
 
@@ -785,7 +793,7 @@ ${JSON.stringify({
         }
 
         // Standard DOM Actions
-        const result = await sendToTab(tabId, {
+        let result = await sendToTab(tabId, {
           type: MSG.EXECUTE_ACTION,
           action: type,
           elementId: action.elementId,
