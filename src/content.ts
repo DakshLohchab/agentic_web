@@ -494,6 +494,12 @@ async function executeAction(payload: any) {
         return { ok: true };
 
       case "scroll":
+        if (payload.fastPath) {
+          const targetY = payload.targetY !== undefined ? payload.targetY : window.scrollY;
+          const targetX = payload.targetX !== undefined ? payload.targetX : window.scrollX;
+          window.scrollTo({ top: targetY, left: targetX, behavior: 'instant' });
+          return { ok: true };
+        }
         return scrollPage(value);
 
       case "extract":
@@ -502,7 +508,7 @@ async function executeAction(payload: any) {
       case "press": {
         const el = findElement(elementId, snapshot, payload) || document.activeElement as HTMLElement;
         if (!el) throw new Error("No element for press");
-        el.scrollIntoView({ block: "center" });
+        el.scrollIntoView(payload.fastPath ? { block: "center", behavior: "instant" } : { block: "center" });
         el.focus();
         const key = value || "Enter";
         const shifted = await verifyDOMShift(() => {
@@ -525,7 +531,7 @@ async function executeAction(payload: any) {
         if (blockReason) {
           return { ok: false, blocked: true, error: blockReason };
         }
-        el.scrollIntoView({ block: "center" });
+        el.scrollIntoView(payload.fastPath ? { block: "center", behavior: "instant" } : { block: "center" });
         const rect = el.getBoundingClientRect();
         const x = Math.round(rect.left + rect.width / 2);
         const y = Math.round(rect.top + rect.height / 2);
@@ -557,7 +563,7 @@ async function executeAction(payload: any) {
         if (sensitive.test(ph) && value) {
           return { ok: false, error: "Refusing to type into sensitive field" };
         }
-        el.scrollIntoView({ block: "center" });
+        el.scrollIntoView(payload.fastPath ? { block: "center", behavior: "instant" } : { block: "center" });
         el.focus();
 
         // Safety gate: Wait 100ms for DOM layout and focus state to settle

@@ -325,6 +325,16 @@ export class AgentLoop {
             memoryHint = `\nMEMORY RECALL: You have successfully completed this task on this domain before. The exact action required is: ${text}. You should strongly prefer executing this exact action if the target element exists in the current snapshot.\n`;
           }
         }
+
+        const rulesRes = await mcpBridge.executeTool("query_learnt_rules", { domain });
+        if (rulesRes && rulesRes.content && rulesRes.content.length > 0) {
+          try {
+            const rulesArray = JSON.parse(rulesRes.content[0].text);
+            if (Array.isArray(rulesArray) && rulesArray.length > 0) {
+              memoryHint += `\n[LEARNT CONSTRAINTS] The user has previously provided the following layout or business rules for this domain:\n- ${rulesArray.join('\n- ')}\n`;
+            }
+          } catch(e) {}
+        }
       } catch(e) {
         // Silently catch MCP query errors
       }
@@ -972,6 +982,10 @@ ${JSON.stringify({
           layout_hash,
           winning_action: JSON.stringify(lastAction)
         }).catch(err => console.warn("Failed to store successful action in memory:", err));
+        
+        // Trigger self-learning extraction on successful step completion
+        const recentHistory = state.history.slice(-3).map((h: any) => h.detail || h.outcome || h.action).join("\n");
+        this.extractLearntRulesAsync(recentHistory).catch(() => {});
       } catch (e) {
         // Silently catch URL parsing or other sync errors so we don't crash the loop
       }
@@ -1069,6 +1083,36 @@ ${JSON.stringify({
       this.running = false;
       if (this.tabId) await speedRenderer.disable(this.tabId);
       await this.pushUpdate();
+    }
+  }
+
+  async extractLearntRulesAsync(text: string) {
+    try {
+      if (!this.tabId) return;
+      const tab = await chrome.tabs.get(this.tabId);
+      if (!tab?.url) return;
+      const domain = new URL(tab.url).hostname;
+      
+      const prompt = `Extract any user layout constraints or business guidelines mentioned here (e.g., specific target criteria or approval handlers). Return a clean JSON list of rule strings or null.\n\nConversation:\n${text}`;
+      const rawRes = await callLLM(prompt, "You are a fast rule extractor. Output ONLY valid JSON array of strings or null.", null);
+      
+      let cleanString = (rawRes as string).trim();
+      if (cleanString.includes("\`\`\`")) {
+        cleanString = cleanString.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
+      }
+      
+      let rules = JSON.parse(cleanString);
+      if (Array.isArray(rules) && rules.length > 0) {
+        for (const r of rules) {
+          mcpBridge.executeTool("store_learnt_rule", {
+            domain,
+            rule_key: "constraint_" + Date.now() + "_" + Math.floor(Math.random()*1000),
+            extracted_rule_text: r
+          }).catch(() => {});
+        }
+      }
+    } catch(e) {
+      // Silently ignore background extraction errors
     }
   }
 

@@ -1,7 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { storeMemory, queryMemory } from './memory-worker';
+import { storeMemory, queryMemory, storeLearntRule, queryLearntRules } from './memory-worker';
 
 const server = new Server(
   {
@@ -43,6 +43,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["domain", "goal"]
         }
+      },
+      {
+        name: "store_learnt_rule",
+        description: "Store an extracted layout constraint or business guideline for a specific domain.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            domain: { type: "string" },
+            rule_key: { type: "string" },
+            extracted_rule_text: { type: "string" }
+          },
+          required: ["domain", "rule_key", "extracted_rule_text"]
+        }
+      },
+      {
+        name: "query_learnt_rules",
+        description: "Query for all extracted rules on a specific domain.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            domain: { type: "string" }
+          },
+          required: ["domain"]
+        }
       }
     ]
   };
@@ -63,6 +87,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     } else {
       return { content: [{ type: "text", text: "No matching memory found." }] };
     }
+  }
+
+  if (name === "store_learnt_rule") {
+    storeLearntRule(args?.domain as string, args?.rule_key as string, args?.extracted_rule_text as string);
+    return { content: [{ type: "text", text: "Rule stored successfully." }] };
+  }
+
+  if (name === "query_learnt_rules") {
+    const rules = queryLearntRules(args?.domain as string);
+    return { content: [{ type: "text", text: JSON.stringify(rules) }] };
   }
 
   throw new Error(`Unknown tool requested: ${name}`);

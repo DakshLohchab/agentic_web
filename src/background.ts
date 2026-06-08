@@ -184,6 +184,7 @@ async function handleMessage(message: any, sendResponse: (response: any) => void
              thought: "Received user input.",
              outcome: "ok"
            });
+           agent.extractLearntRulesAsync(reply).catch(() => {});
            agent.start(tabId, agent.goal, true).catch(err => {
              console.error(`[Swarm] Agent error on tab ${tabId}:`, err);
            });

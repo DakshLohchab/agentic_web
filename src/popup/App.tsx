@@ -25,6 +25,7 @@ interface TabAccess {
 }
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<"chat" | "new_task">("chat");
   const [goal, setGoal] = useState("");
   const [swarm, setSwarm] = useState<Record<number, WorkerState>>({});
   const [tabAccess, setTabAccess] = useState<TabAccess>({ restricted: false, canAutoNavigate: false, message: null });
@@ -134,6 +135,9 @@ export default function App() {
     setIsRunning(true);
 
     try {
+      // Unmount previous tab state and context frames to prevent goal context bleed
+      await chrome.runtime.sendMessage({ type: MSG.STOP_AGENT });
+
       const res = await chrome.runtime.sendMessage({
         type: MSG.START_AGENT,
         goal: trimmedGoal,
@@ -159,6 +163,7 @@ export default function App() {
         return;
       }
 
+      setActiveTab("chat");
       await fetchClusterStatus();
     } catch (err: any) {
       setError(err?.message || "Extension error — reload the extension and try again.");
@@ -212,6 +217,21 @@ export default function App() {
         </Magnetic>
       </header>
 
+      <div className="tabs" style={{ display: "flex", justifyContent: "center", gap: "20px", margin: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "10px" }}>
+        <button 
+          onClick={() => setActiveTab("chat")} 
+          style={{ background: "transparent", border: "none", color: activeTab === "chat" ? "#fff" : "#888", fontWeight: activeTab === "chat" ? "bold" : "normal", cursor: "pointer", borderBottom: activeTab === "chat" ? "2px solid var(--primary-color)" : "none", paddingBottom: "5px" }}
+        >
+          Chat Thread
+        </button>
+        <button 
+          onClick={() => setActiveTab("new_task")} 
+          style={{ background: "transparent", border: "none", color: activeTab === "new_task" ? "#fff" : "#888", fontWeight: activeTab === "new_task" ? "bold" : "normal", cursor: "pointer", borderBottom: activeTab === "new_task" ? "2px solid var(--primary-color)" : "none", paddingBottom: "5px" }}
+        >
+          New Task
+        </button>
+      </div>
+
       {/* Access banner */}
       {tabAccess.restricted && (
         <div className={`banner ${tabAccess.canAutoNavigate ? "banner-info" : "banner-warning"}`} role="alert">
@@ -231,10 +251,10 @@ export default function App() {
       )}
 
       <main className="main-content">
-        {/* Goal input */}
+        {activeTab === "new_task" && (
         <section className={`control-section ${isRunning ? "shimmer-active" : ""}`}>
-          <label htmlFor="goal" className="section-label">Your Goal</label>
-          <p className="goal-hint">Describe what to do on the page — the agent will plan, navigate, and act.</p>
+          <label htmlFor="goal" className="section-label">Workspace Configuration</label>
+          <p className="goal-hint">Initialize a fresh goal context for the agent.</p>
 
           <div className="textarea-wrapper">
             <textarea
@@ -270,7 +290,7 @@ export default function App() {
                 className="btn btn-primary"
               >
                 <span className="material-symbols-outlined">rocket_launch</span>
-                Start Agent
+                Initialize New Thread
               </button>
             </Magnetic>
             <Magnetic>
@@ -288,21 +308,13 @@ export default function App() {
           </div>
         </section>
 
-        {/* Live thinking strip */}
-        {activeWorker && (
-          <div className="think-strip" aria-live="polite">
-            <div className="think-dot"></div>
-            <span>
-              {activeWorker.lastThought
-                ? `${statusLabel} ${activeWorker.lastThought.slice(0, 90)}`
-                : statusLabel}
-            </span>
           </div>
         )}
 
-        {/* Swarm Cards */}
+        {/* Chat / Conversation Thread */}
+        {activeTab === "chat" && (
         <section className="control-section">
-          <label className="section-label">Active Workers</label>
+          <label className="section-label">Active Conversation Thread</label>
           <div className="swarm-container">
             {Object.keys(swarm).length === 0 ? (
               <div className="empty-grid">
@@ -386,6 +398,7 @@ export default function App() {
             )}
           </div>
         </section>
+        )}
       </main>
 
       <footer className="app-footer footer-row">
