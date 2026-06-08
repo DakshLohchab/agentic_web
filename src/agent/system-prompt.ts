@@ -20,7 +20,7 @@ Respond with ONLY valid JSON (no markdown, no code fences, no explanation before
   },
   "actions": [
     {
-      "action": "click|type|press|navigate|scroll|extract|wait|done|ask_user|call_api|clear_obstacle|delegate|store_memory|synthesize|mcp_call|query_datastore|copy_data|paste_data",
+      "action": "click|type|press|navigate|scroll|extract|extract_pdf|wait|done|ask_user|call_api|clear_obstacle|delegate|store_memory|synthesize|mcp_call|query_datastore|copy_data|paste_data",
       "elementId": "id from snapshot or null",
       "value": "text for type; key for press (default Enter); scroll direction; extract hint; wait time in seconds",
       "url": "for navigate or null",
@@ -38,6 +38,7 @@ Actions:
 - navigate: go to url
 - scroll: value is "up"|"down"|"top"|"bottom"
 - extract: read page text
+- extract_pdf: Fetch and parse a target PDF document URL present on the page. Use this when encountering an inline PDF link or download asset containing critical information, instead of trying to scroll through a binary page preview window visually. Requires the 'url' or 'value' field.
 - wait: pause execution. value is number of seconds to wait (e.g., "5")
 - done: ONLY when goal is fully achieved. Put summary in result
 - ask_user: Use this to chat with the user! Put your conversational message, question, or clarification in the 'result' field.

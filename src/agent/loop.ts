@@ -869,6 +869,71 @@ ${JSON.stringify({
       };
     });
 
+    // 4. Critic Node: Verifies action success
+    graph.addNode("critic", async (state) => {
+      this.status = "verifying";
+      await this.pushUpdate();
+
+      if (!state.running || !state.nextAction) return {};
+
+      const actions = state.nextAction.actions || [state.nextAction];
+      const lastAction = actions[actions.length - 1];
+      if (!lastAction) return {};
+      const type = lastAction.action;
+
+      if (!["click", "type", "press"].includes(type)) {
+        return {}; // Skip verification for non-interactive actions
+      }
+
+      if (!this.tabId) return {};
+
+      await waitForNetworkIdle(this.tabId, 80, 500);
+      let newSnapshot = await sendToTab(this.tabId, { type: "SNAPSHOT_DIFF", lastActionRect: this.lastActionRect });
+      
+      if (!newSnapshot?.ok) {
+        newSnapshot = await sendToTab(this.tabId, { type: MSG.SNAPSHOT });
+      }
+
+      if (!newSnapshot?.ok) return {};
+
+      let failed = false;
+      let errorMsg = "";
+
+      if (type === "type" && lastAction.elementId) {
+        const item = newSnapshot.interactables?.find((i: any) => i.id === lastAction.elementId);
+        if (item && !item.value?.includes(lastAction.value) && !item.text?.includes(lastAction.value)) {
+          failed = true;
+          errorMsg = "Critic Verification Failed: Text input field did not populate correctly.";
+        }
+      } else if (type === "click") {
+        if (newSnapshot.isDiff && newSnapshot.interactables?.length === 0 && newSnapshot.url === state.snapshot?.url) {
+           failed = true;
+           errorMsg = "Critic Verification Failed: Click action resulted in no UI changes. The element might be obscured or unclickable.";
+        }
+      }
+
+      if (failed) {
+        console.warn("[Agentic Critic]", errorMsg);
+        this.lastError = errorMsg;
+        let currentHistory = [...state.history];
+        currentHistory.push({
+          thought: state.lastThought,
+          action: "critic_rejection",
+          detail: formatActionDetail(lastAction),
+          outcome: errorMsg
+        });
+
+        return {
+          retryCount: state.retryCount + 1,
+          lastError: errorMsg,
+          history: currentHistory,
+          snapshot: newSnapshot
+        };
+      }
+
+      return { snapshot: newSnapshot };
+    });
+
     // Edges configuration (routing controls)
     graph.addEdge("observer", (state) => {
       if (state.lastError && state.retryCount >= MAX_RETRIES) {
@@ -892,6 +957,17 @@ ${JSON.stringify({
         this.lastError = "Max workflow execution limit hit.";
         this.running = false;
         return "";
+      }
+      if (state.lastError && state.lastError.includes("BLOCKED")) {
+         return "planner";
+      }
+      return "critic";
+    });
+
+    graph.addEdge("critic", (state) => {
+      if (!state.running) return "";
+      if (state.lastError && state.history.length > 0 && state.history[state.history.length - 1].action === "critic_rejection") {
+        return "planner";
       }
       return "observer";
     });

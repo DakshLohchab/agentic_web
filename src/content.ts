@@ -557,6 +557,42 @@ async function executeAction(payload: any) {
         }
       }
 
+      case "extract_pdf": {
+        try {
+          if (!url && !value) throw new Error("extract_pdf requires a url or value pointing to the PDF");
+          const targetUrl = url || value;
+          const res = await fetch(targetUrl);
+          const arrayBuffer = await res.arrayBuffer();
+          
+          let extractedText = "";
+          try {
+            // Attempt dynamic import of PDF.js from CDN (may be blocked by extension CSP)
+            const pdfjsLib = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js");
+            pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+            const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              extractedText += content.items.map((item: any) => item.str).join(" ") + "\n";
+            }
+          } catch (cdnErr) {
+            console.warn("PDF parser utility blocked or failed, using text layout parser fallback", cdnErr);
+            const view = new Uint8Array(arrayBuffer);
+            let str = "";
+            for (let i = 0; i < view.length; i++) {
+               const char = view[i];
+               if (char >= 32 && char <= 126) str += String.fromCharCode(char);
+               else str += " ";
+            }
+            extractedText = str.replace(/\s+/g, ' ').match(/[a-zA-Z0-9\s.,?!'"()-]{15,}/g)?.join("\n") || "No readable text extracted.";
+          }
+          
+          return { ok: true, text: extractedText.slice(0, 15000) };
+        } catch (e: any) {
+          return { ok: false, error: "Failed to extract PDF: " + e.message };
+        }
+      }
+
       default:
         throw new Error(`Unknown action: ${action}`);
     }
