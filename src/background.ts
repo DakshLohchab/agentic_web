@@ -140,17 +140,40 @@ async function handleMessage(message: any, sendResponse: (response: any) => void
         
         await chrome.debugger.attach({ tabId }, "1.3");
         try {
+          // Validate and adjust coordinates to account for dynamic viewport scrolls and absolute overlays
+          let finalX = x;
+          let finalY = y;
+          const res: any = await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
+             expression: `
+               (() => {
+                  const el = document.elementFromPoint(${x}, ${y});
+                  if (!el) return {x: ${x}, y: ${y}};
+                  const rect = el.getBoundingClientRect();
+                  return {
+                     x: rect.left + rect.width / 2,
+                     y: rect.top + rect.height / 2
+                  };
+               })()
+             `,
+             returnByValue: true
+          });
+          
+          if (res?.result?.value) {
+             finalX = res.result.value.x;
+             finalY = res.result.value.y;
+          }
+
           await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
             type: "mousePressed",
-            x,
-            y,
+            x: finalX,
+            y: finalY,
             button: "left",
             clickCount: 1
           });
           await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
             type: "mouseReleased",
-            x,
-            y,
+            x: finalX,
+            y: finalY,
             button: "left",
             clickCount: 1
           });

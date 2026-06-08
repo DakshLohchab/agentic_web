@@ -799,13 +799,30 @@ ${JSON.stringify({
         if (!result?.ok) {
           const msg = result?.error || "Action failed.";
           if (result?.blocked) {
-            this.lastError = msg;
-            this.status = "blocked";
-            this.running = false;
-            await speedRenderer.disable(tabId);
-            return { status: "blocked", running: false, lastError: msg };
+            console.log("Agent Blocked. Debouncing 500ms for massive local DOM mutations or active SPA transitions...");
+            await new Promise(r => setTimeout(r, 500));
+            result = await sendToTab(tabId, {
+              type: MSG.EXECUTE_ACTION,
+              action: type,
+              elementId: action.elementId,
+              value: action.value || action.matchText,
+              matchText: action.matchText || action.value,
+              url: action.url,
+              submit: action.submit,
+              snapshot: state.snapshot
+            });
+
+            if (!result?.ok) {
+              const retryMsg = result?.error || msg;
+              this.lastError = retryMsg;
+              this.status = "blocked";
+              this.running = false;
+              await speedRenderer.disable(tabId);
+              return { status: "blocked", running: false, lastError: retryMsg };
+            }
+          } else {
+            throw new Error(msg);
           }
-          throw new Error(msg);
         }
 
         if (result.x !== undefined && result.y !== undefined) {

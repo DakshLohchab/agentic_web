@@ -26,7 +26,13 @@ function findConnectedComponents(elements: Interactable[], threshold: number): I
   
   for (let i = 0; i < elements.length; i++) {
     for (let j = i + 1; j < elements.length; j++) {
-      if (getRectDistance(elements[i], elements[j]) < threshold) {
+      const elI = elements[i];
+      const elJ = elements[j];
+      
+      const isGridI = elI.role === "gridcell" || elI.role === "calendar" || elI.tag?.toLowerCase() === "td" || (elI.text && /^\s*(0?[1-9]|[12][0-9]|3[01])\s*$/.test(elI.text));
+      const isGridJ = elJ.role === "gridcell" || elJ.role === "calendar" || elJ.tag?.toLowerCase() === "td" || (elJ.text && /^\s*(0?[1-9]|[12][0-9]|3[01])\s*$/.test(elJ.text));
+      
+      if (!isGridI && !isGridJ && getRectDistance(elI, elJ) < threshold) {
         adj[i].push(j);
         adj[j].push(i);
       }
