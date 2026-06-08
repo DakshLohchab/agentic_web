@@ -484,6 +484,11 @@ async function executeAction(payload: any) {
         const x = Math.round(rect.left + rect.width / 2);
         const y = Math.round(rect.top + rect.height / 2);
         
+        const topEl = document.elementFromPoint(x, y);
+        if (topEl && !el.contains(topEl) && !topEl.contains(el)) {
+          return { ok: false, blocked: true, error: "BLOCKED: Element is obscured by another element. Use 'clear_obstacle' to close modals/cookie banners, or explicitly click the blocking element first." };
+        }
+
         if (typeof el.click === "function") {
           el.click();
         } else {
@@ -519,6 +524,37 @@ async function executeAction(payload: any) {
           return { ok: true, submitted: true, x, y, w: Math.round(rect.width), h: Math.round(rect.height) };
         }
         return { ok: true, submitted: false, x, y, w: Math.round(rect.width), h: Math.round(rect.height) };
+      }
+
+      case "copy_data": {
+        const el = findElement(elementId, snapshot, payload);
+        let textToCopy = "";
+        if (el) {
+          textToCopy = el.innerText || extractText(value).data || "";
+        } else {
+          textToCopy = extractText(value).data || "";
+        }
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          return { ok: true, copied: textToCopy.slice(0, 50) + (textToCopy.length > 50 ? "..." : "") };
+        } catch (e: any) {
+          return { ok: false, error: "Clipboard write permission denied or failed: " + e.message };
+        }
+      }
+
+      case "paste_data": {
+        try {
+          const text = await navigator.clipboard.readText();
+          const el = findElement(elementId, snapshot, payload);
+          if (!el) throw new Error(`Element not found for paste: ${elementId}`);
+          
+          el.scrollIntoView({ block: "center" });
+          setTypeValue(el, text);
+          
+          return { ok: true, pastedLength: text.length };
+        } catch (e: any) {
+          return { ok: false, error: "Clipboard read permission denied or failed: " + e.message };
+        }
       }
 
       default:

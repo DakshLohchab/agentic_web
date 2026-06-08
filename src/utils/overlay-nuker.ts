@@ -22,7 +22,7 @@ export async function detectAndClearOverlays(tabId: number): Promise<{ cleared: 
 
         function hasCookieKeywords(el: HTMLElement): boolean {
           const text = (el.innerText || '').toLowerCase();
-          const keywords = ['accept cookies', 'privacy policy', 'subscribe to our newsletter', 'dismiss', 'cookie consent'];
+          const keywords = ['accept cookies', 'privacy policy', 'subscribe to our newsletter', 'dismiss', 'cookie consent', 'reject all', 'accept all', 'manage preferences', "i'm ok with that", 'allow all', 'strictly necessary'];
           
           if (el.tagName.toLowerCase() === 'body' || el.tagName.toLowerCase() === 'html') return false;
           if (text.length > 5000) return false; 
@@ -99,6 +99,8 @@ export async function detectAndClearOverlays(tabId: number): Promise<{ cleared: 
               btnText.includes('agree') ||
               btnText.includes('got it') ||
               btnText.includes('no thanks') ||
+              btnText.includes('reject') ||
+              btnText.includes("i'm ok with that") ||
               btnAria.includes('close') || 
               btnText === 'x' ||
               btnText === '✕'

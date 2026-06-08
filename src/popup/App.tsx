@@ -14,6 +14,7 @@ interface WorkerState {
   lastError: string;
   global_plan?: string[];
   current_step_index?: number;
+  history?: any[];
 }
 
 interface TabAccess {
@@ -324,30 +325,50 @@ export default function App() {
                       </div>
                       <span className={`chip ${chipClass}`}>{worker.status}</span>
                     </div>
-                    <div className="swarm-details">
-                      <strong>Goal:</strong> {worker.goal || "—"}
+                    <div className="chat-log" style={{ maxHeight: "250px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", padding: "10px 0" }}>
+                      {worker.goal && (
+                        <div style={{ alignSelf: "flex-end", background: "var(--primary-color, #534ab7)", padding: "8px 12px", borderRadius: "12px", maxWidth: "80%" }}>
+                          <strong>Goal:</strong> {worker.goal}
+                        </div>
+                      )}
+                      
+                      {worker.history?.filter(h => ["ask_user", "user_reply", "done", "synthesize"].includes(h.action)).map((h, i) => {
+                        const isUser = h.action === "user_reply";
+                        return (
+                          <div key={i} style={{ 
+                            alignSelf: isUser ? "flex-end" : "flex-start", 
+                            background: isUser ? "var(--primary-color, #534ab7)" : "var(--surface-color, #2a2d3d)", 
+                            padding: "8px 12px", 
+                            borderRadius: "12px", 
+                            maxWidth: "80%",
+                            border: isUser ? "none" : "1px solid rgba(255,255,255,0.1)"
+                          }}>
+                            {h.detail || h.outcome || h.action}
+                          </div>
+                        );
+                      })}
+
+                      {worker.running && worker.lastAction && (
+                        <div style={{ alignSelf: "flex-start", fontStyle: "italic", fontSize: "0.85rem", color: "#888", marginTop: "4px" }}>
+                          Agent is {worker.lastAction}...
+                        </div>
+                      )}
+
+                      {worker.lastError && (
+                        <div style={{ alignSelf: "flex-start", background: "rgba(239, 68, 68, 0.2)", border: "1px solid #ef4444", color: "#ef4444", padding: "8px 12px", borderRadius: "12px", maxWidth: "80%" }}>
+                          <strong>Error:</strong> {worker.lastError}
+                        </div>
+                      )}
                     </div>
-                    <div className="swarm-details action-line">
-                      <strong>Step {worker.step}:</strong> {worker.lastAction || "—"}
-                    </div>
-                    {worker.lastThought && (
-                      <div className="swarm-details thought-line">
-                        <strong>Thought:</strong> {worker.lastThought}
-                      </div>
-                    )}
-                    {worker.lastError && (
-                      <div className="swarm-details error-line">
-                        <strong>Error:</strong> {worker.lastError}
-                      </div>
-                    )}
-                    {worker.status === "ask_user" && (
+
+                    {(worker.running || worker.status === "done" || worker.status === "ask_user") && (
                       <div className="ask-user-container" style={{ marginTop: "10px", display: "flex", gap: "5px" }}>
                         <input 
                           type="text" 
                           value={replyText} 
                           onChange={(e) => setReplyText(e.target.value)} 
                           placeholder="Your reply..." 
-                          style={{ flex: 1, padding: "5px", borderRadius: "4px", border: "1px solid #444", background: "#222", color: "#fff" }} 
+                          style={{ flex: 1, padding: "5px", borderRadius: "4px", border: "1px solid rgba(255, 255, 255, 0.2)", background: "rgba(0, 0, 0, 0.2)", color: "#fff" }} 
                           onKeyDown={(e) => { if (e.key === 'Enter') handleReply(Number(tabId)); }}
                         />
                         <button 
