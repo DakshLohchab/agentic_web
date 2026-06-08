@@ -441,6 +441,48 @@ function setTypeValue(el: HTMLElement, value: string | null | undefined) {
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+async function verifyDOMShift(actionFn: () => void | Promise<void>): Promise<boolean> {
+  return new Promise(async (resolve) => {
+    let shifted = false;
+    let timer: any;
+    
+    const observer = new MutationObserver(() => {
+      shifted = true;
+      cleanup();
+      resolve(true);
+    });
+    
+    const onPopState = () => {
+      shifted = true;
+      cleanup();
+      resolve(true);
+    };
+
+    function cleanup() {
+      observer.disconnect();
+      window.removeEventListener("popstate", onPopState);
+      if (timer) clearTimeout(timer);
+    }
+    
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    window.addEventListener("popstate", onPopState);
+    
+    timer = setTimeout(() => {
+      if (!shifted) {
+        cleanup();
+        resolve(false);
+      }
+    }, 1500);
+
+    try {
+      await actionFn();
+    } catch (e) {
+      cleanup();
+      throw e;
+    }
+  });
+}
+
 async function executeAction(payload: any) {
   const { action, elementId, value, url, snapshot, submit } = payload;
 
@@ -463,12 +505,16 @@ async function executeAction(payload: any) {
         el.scrollIntoView({ block: "center" });
         el.focus();
         const key = value || "Enter";
-        if (key === "Enter" && isSearchLikeInput(el)) {
-          submitSearchField(el);
-        } else {
-          dispatchKey(el, key);
-        }
-        return { ok: true, submitted: key === "Enter" };
+        const shifted = await verifyDOMShift(() => {
+          if (key === "Enter" && isSearchLikeInput(el)) {
+            submitSearchField(el);
+          } else {
+            dispatchKey(el, key);
+          }
+        });
+        const result: any = { ok: true, submitted: key === "Enter" };
+        if (!shifted) result.warning = "Action dispatched but no resulting DOM layout shift was detected. Verify success.";
+        return result;
       }
 
       case "click": {
@@ -489,14 +535,18 @@ async function executeAction(payload: any) {
           return { ok: false, blocked: true, error: "BLOCKED: Element is obscured by another element. Use 'clear_obstacle' to close modals/cookie banners, or explicitly click the blocking element first." };
         }
 
-        if (typeof el.click === "function") {
-          el.click();
-        } else {
-          el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-          el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
-          el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-        }
-        return { ok: true, x, y, w: Math.round(rect.width), h: Math.round(rect.height) };
+        const shifted = await verifyDOMShift(() => {
+          if (typeof el.click === "function") {
+            el.click();
+          } else {
+            el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+            el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+            el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+          }
+        });
+        const result: any = { ok: true, x, y, w: Math.round(rect.width), h: Math.round(rect.height) };
+        if (!shifted) result.warning = "Action dispatched but no resulting DOM layout shift was detected. Verify success.";
+        return result;
       }
 
       case "type": {
@@ -517,13 +567,16 @@ async function executeAction(payload: any) {
         const x = Math.round(rect.left + rect.width / 2);
         const y = Math.round(rect.top + rect.height / 2);
 
-        setTypeValue(el, value);
         const shouldSubmit = submit !== false && (submit === true || isSearchLikeInput(el));
-        if (shouldSubmit) {
-          submitSearchField(el);
-          return { ok: true, submitted: true, x, y, w: Math.round(rect.width), h: Math.round(rect.height) };
-        }
-        return { ok: true, submitted: false, x, y, w: Math.round(rect.width), h: Math.round(rect.height) };
+        const shifted = await verifyDOMShift(() => {
+          setTypeValue(el, value);
+          if (shouldSubmit) {
+            submitSearchField(el);
+          }
+        });
+        const result: any = { ok: true, submitted: shouldSubmit, x, y, w: Math.round(rect.width), h: Math.round(rect.height) };
+        if (!shifted) result.warning = "Action dispatched but no resulting DOM layout shift was detected. Verify success.";
+        return result;
       }
 
       case "copy_data": {

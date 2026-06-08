@@ -4,6 +4,31 @@ import { testConnection } from "./llm/test-connection";
 import { getTabAccessInfo, prepareAgentTab } from "./utils/tab-access";
 import { initNetworkTracker } from "./utils/network-tracker";
 import { runBiWeeklyUpdater } from "./agent/updater";
+import { mcpBridge } from "./utils/native-bridge";
+
+export class TelemetryLogger {
+  private static lastTransitionTime = Date.now();
+
+  static async logTransition(state: any) {
+    if (!state) return;
+    const now = Date.now();
+    const latencyMs = now - this.lastTransitionTime;
+    this.lastTransitionTime = now;
+
+    const trace = {
+      timestamp: new Date().toISOString(),
+      tabId: state.tabId,
+      currentGoal: state.goal,
+      actionTaken: state.lastAction || "none",
+      latencyMs,
+      criticResult: state.lastError || "ok"
+    };
+
+    mcpBridge.executeTool("log_agent_trace", trace).catch(err => {
+      console.warn("Telemetry fire-and-forget failed:", err);
+    });
+  }
+}
 
 // Register active network trackers
 initNetworkTracker();

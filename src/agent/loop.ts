@@ -12,6 +12,7 @@ import { generateSemanticTree } from "../utils/semantic-parser";
 import { detectAndClearOverlays } from "../utils/overlay-nuker";
 import { mcpBridge } from "../utils/native-bridge";
 import { speedRenderer } from "../utils/net-blocker";
+import { TelemetryLogger } from "../background";
 
 function cleanAndParseJSON(rawResponse: string) {
   try {
@@ -120,6 +121,7 @@ export class AgentLoop {
   async pushUpdate(extra = {}) {
     const state = this.getState();
     broadcastUpdate({ state, ...extra });
+    TelemetryLogger.logTransition(state).catch(console.error);
     await updateTabOverlay(this.tabId, {
       status: state.status,
       step: state.step,

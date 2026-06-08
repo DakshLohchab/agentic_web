@@ -197,3 +197,28 @@ export function initializeTechWorker() {
 if (true /* ESM execution */) {
   initializeTechWorker();
 }
+
+import Database from 'better-sqlite3';
+
+export function handleLogAgentTrace(trace: any) {
+  const db = new Database('./devops-observability.db');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_traces (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT,
+      tabId INTEGER,
+      currentGoal TEXT,
+      actionTaken TEXT,
+      latencyMs INTEGER,
+      criticResult TEXT
+    )
+  `);
+  
+  const stmt = db.prepare(`
+    INSERT INTO agent_traces (timestamp, tabId, currentGoal, actionTaken, latencyMs, criticResult)
+    VALUES (@timestamp, @tabId, @currentGoal, @actionTaken, @latencyMs, @criticResult)
+  `);
+  
+  stmt.run(trace);
+  db.close();
+}
