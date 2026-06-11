@@ -451,10 +451,22 @@ function setTypeValue(el: HTMLElement, value: string | null | undefined) {
     }
   }
 
-  if (el.isContentEditable) {
-    el.textContent = "";
+  const isInput = !el.isContentEditable;
+  if (isInput) {
+    const inputEl = el as HTMLInputElement;
+    const valueSetter = Object.getOwnPropertyDescriptor(inputEl, "value")?.set;
+    const prototype = Object.getPrototypeOf(inputEl);
+    const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+
+    if (valueSetter && valueSetter !== prototypeValueSetter) {
+      prototypeValueSetter?.call(inputEl, "");
+    } else if (prototypeValueSetter) {
+      prototypeValueSetter.call(inputEl, "");
+    } else {
+      inputEl.value = "";
+    }
   } else {
-    (el as HTMLInputElement).value = "";
+    el.textContent = "";
   }
 
   const chars = (value ?? "").split("");
@@ -466,7 +478,19 @@ function setTypeValue(el: HTMLElement, value: string | null | undefined) {
     if (el.isContentEditable) {
       el.textContent += char;
     } else {
-      (el as HTMLInputElement).value += char;
+      const inputEl = el as HTMLInputElement;
+      const currentValue = inputEl.value;
+      const valueSetter = Object.getOwnPropertyDescriptor(inputEl, "value")?.set;
+      const prototype = Object.getPrototypeOf(inputEl);
+      const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+
+      if (valueSetter && valueSetter !== prototypeValueSetter) {
+        prototypeValueSetter?.call(inputEl, currentValue + char);
+      } else if (prototypeValueSetter) {
+        prototypeValueSetter.call(inputEl, currentValue + char);
+      } else {
+        inputEl.value += char;
+      }
     }
     
     el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: char }));
@@ -663,8 +687,11 @@ async function executeAction(payload: any) {
           let extractedText = "";
           try {
             // Attempt dynamic import of PDF.js from CDN (may be blocked by extension CSP)
-            // @ts-ignore
-            const pdfjsLib = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js");
+            const pdfUrl = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js";
+            // Use new Function to hide the import keyword from the static parser 
+            // which throws SyntaxError in classic extension content scripts.
+            const importFunc = new Function('url', 'return import(url)');
+            const pdfjsLib = await importFunc(pdfUrl);
             pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
             const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
             for (let i = 1; i <= pdf.numPages; i++) {
