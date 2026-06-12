@@ -4,15 +4,8 @@ import { resolve } from 'path';
 import fs from 'fs';
 
 export default defineConfig({
-  base: '',
   plugins: [
     react(),
-    {
-      name: 'remove-crossorigin',
-      transformIndexHtml(html) {
-        return html.replace(/ crossorigin/g, '');
-      }
-    },
     {
       name: 'copy-manifest',
       closeBundle() {
