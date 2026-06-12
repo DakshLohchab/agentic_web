@@ -110,6 +110,7 @@ export class AgentLoop {
       lastAction: this.lastAction,
       lastError: this.lastError,
       historyLength: this.history.length,
+      history: this.history,
       global_plan: this.globalPlan,
       current_step_index: this.currentStepIndex,
       globalScratchpad: this.globalScratchpad,
@@ -157,6 +158,8 @@ export class AgentLoop {
       this.taskChecklist = [];
       this.currentChecklistIndex = 0;
       this.pastExperience = await ExperienceStore.findSimilarExperience(goal);
+    } else {
+      this.lastError = ""; // Clear errors so UI allows chat
     }
     this.running = true;
     this.status = "running";
@@ -442,12 +445,17 @@ ${JSON.stringify({
       const isScrollStagnant = scrollCount >= 3;
 
       if (isPureStagnant || isScrollStagnant) {
-        console.warn("[Agentic] Stagnant state detected. Attempting direct text-match click to break loop.");
-        // Instead of scrolling again, try a fuzzy click on likely target elements
+        console.warn("[Agentic] Stagnant state detected. Prompting user for help to break loop.");
+        
+        this.status = "ask_user";
+        this.lastError = "I seem to be stuck in a loop repeating the same actions or scrolling without making progress. Please provide more specific instructions.";
+        this.running = false;
+        this.pushUpdate();
+
         const stagnantAction = { 
-          action: "click", 
-          matchText: "Directions",
-          thought: "Stagnant state detected (too many scrolls with no progress). Attempting direct text-match click on 'Directions' button to break the loop."
+          action: "ask_user", 
+          result: this.lastError,
+          thought: "Stagnant state detected. Asking the user for help to break the loop."
         };
         return {
           nextAction: stagnantAction,
@@ -954,17 +962,20 @@ ${JSON.stringify({
       let failed = false;
       let errorMsg = "";
 
-      if (type === "type" && lastAction.elementId) {
+      if (type === "type" && lastAction.elementId && !lastAction.submit) {
         const item = newSnapshot.interactables?.find((i: any) => i.id === lastAction.elementId);
-        if (item && !item.value?.includes(lastAction.value) && !item.text?.includes(lastAction.value)) {
+        const typedVal = (lastAction.value || "").toLowerCase();
+        const itemVal = (item?.value || "").toLowerCase();
+        const itemText = (item?.text || "").toLowerCase();
+        
+        if (item && !itemVal.includes(typedVal) && !itemText.includes(typedVal)) {
           failed = true;
           errorMsg = "Critic Verification Failed: Text input field did not populate correctly.";
         }
       } else if (type === "click") {
-        if (newSnapshot.isDiff && newSnapshot.interactables?.length === 0 && newSnapshot.url === state.snapshot?.url) {
-           failed = true;
-           errorMsg = "Critic Verification Failed: Click action resulted in no UI changes. The element might be obscured or unclickable.";
-        }
+        // Relaxed click verification: 
+        // SPAs like YouTube might show a non-interactable loading bar without shifting layout or updating the URL immediately.
+        // We will no longer force-fail clicks. The LLM will assess the next snapshot.
       }
 
       if (failed) {

@@ -54,8 +54,20 @@ export async function detectAndClearOverlays(tabId: number): Promise<{ cleared: 
         for (let i = 0; i < allElements.length; i++) {
           const el = allElements[i] as HTMLElement;
           const tagName = el.tagName.toLowerCase();
-          const role = el.getAttribute('role');
-          if (tagName === 'header' || tagName === 'nav' || tagName === 'aside' || role === 'banner' || role === 'navigation') continue;
+          const role = el.getAttribute('role') || '';
+          const id = (el.id || '').toLowerCase();
+          const className = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+
+          if (
+            tagName === 'header' || tagName === 'nav' || tagName === 'aside' || 
+            role === 'banner' || role === 'navigation' || role === 'search' ||
+            id.includes('masthead') || className.includes('masthead') || tagName.includes('masthead') ||
+            id.includes('header') || className.includes('header') ||
+            id.includes('nav') || className.includes('nav') ||
+            id.includes('search') || className.includes('search')
+          ) {
+            continue;
+          }
 
           const style = window.getComputedStyle(el);
           

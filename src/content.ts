@@ -479,10 +479,11 @@ function setTypeValue(el: HTMLElement, value: string | null | undefined) {
       el.textContent += char;
     } else {
       const inputEl = el as HTMLInputElement;
-      const currentValue = inputEl.value;
       const valueSetter = Object.getOwnPropertyDescriptor(inputEl, "value")?.set;
       const prototype = Object.getPrototypeOf(inputEl);
       const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+      const prototypeValueGetter = Object.getOwnPropertyDescriptor(prototype, "value")?.get;
+      const currentValue = prototypeValueGetter ? prototypeValueGetter.call(inputEl) : inputEl.value;
 
       if (valueSetter && valueSetter !== prototypeValueSetter) {
         prototypeValueSetter?.call(inputEl, currentValue + char);

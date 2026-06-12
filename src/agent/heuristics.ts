@@ -181,7 +181,7 @@ export function getHeuristicHint(
       (i: any) =>
         i.tag === "a" &&
         i.href &&
-        (i.href.includes("/watch") || /#video-title|video/i.test(i.id || "")) &&
+        (i.href.includes("/watch") || i.href.includes("/shorts/")) &&
         (keywords.length === 0 || keywords.some((k) => (i.text || "").toLowerCase().includes(k)))
     );
     if (videos.length && !hadAction(history, "click")) {

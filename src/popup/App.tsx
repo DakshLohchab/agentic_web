@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MSG } from "../utils/messaging";
 import { NeonMeshCanvas } from "../components/NeonMeshCanvas";
 import { Magnetic } from "../components/Magnetic";
@@ -199,6 +199,24 @@ export default function App() {
       }[activeWorker.status] || `${activeWorker.status}…`
     : "";
 
+  const chatLogRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+
+  useEffect(() => {
+    Object.values(chatLogRefs.current).forEach(ref => {
+      if (ref) {
+        ref.scrollTop = ref.scrollHeight;
+      }
+    });
+  }, [swarm]);
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
   return (
     <div className="app">
       <NeonMeshCanvas />
@@ -335,7 +353,7 @@ export default function App() {
                       </div>
                       <span className={`chip ${chipClass}`}>{worker.status}</span>
                     </div>
-                    <div className="chat-log" style={{ maxHeight: "250px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", padding: "10px 0" }}>
+                    <div className="chat-log" ref={(el) => (chatLogRefs.current[Number(tabId)] = el)} style={{ maxHeight: "250px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", padding: "10px 0" }}>
                       {worker.goal && (
                         <div style={{ alignSelf: "flex-end", background: "var(--primary-color, #534ab7)", padding: "8px 12px", borderRadius: "12px", maxWidth: "80%" }}>
                           <strong>Goal:</strong> {worker.goal}
@@ -344,6 +362,7 @@ export default function App() {
                       
                       {worker.history?.filter(h => ["ask_user", "user_reply", "done", "synthesize"].includes(h.action)).map((h, i) => {
                         const isUser = h.action === "user_reply";
+                        const textContent = h.detail || h.outcome || h.action;
                         return (
                           <div key={i} style={{ 
                             alignSelf: isUser ? "flex-end" : "flex-start", 
@@ -351,9 +370,19 @@ export default function App() {
                             padding: "8px 12px", 
                             borderRadius: "12px", 
                             maxWidth: "80%",
-                            border: isUser ? "none" : "1px solid rgba(255,255,255,0.1)"
+                            border: isUser ? "none" : "1px solid rgba(255,255,255,0.1)",
+                            whiteSpace: "pre-wrap"
                           }}>
-                            {h.detail || h.outcome || h.action}
+                            {textContent}
+                            {!isUser && (
+                              <button 
+                                onClick={() => copyToClipboard(textContent)} 
+                                title="Copy message" 
+                                style={{ background: "transparent", border: "none", color: "#888", cursor: "pointer", display: "block", marginTop: "4px", padding: 0 }}
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>content_copy</span>
+                              </button>
+                            )}
                           </div>
                         );
                       })}
@@ -371,22 +400,24 @@ export default function App() {
                       )}
                     </div>
 
-                    {(worker.running || worker.status === "done" || worker.status === "ask_user") && (
+                    {(worker.running || ["done", "ask_user", "error", "blocked", "stopped"].includes(worker.status)) && (
                       <div className="ask-user-container" style={{ marginTop: "10px", display: "flex", gap: "5px" }}>
                         <input 
                           type="text" 
                           value={replyText} 
                           onChange={(e) => setReplyText(e.target.value)} 
-                          placeholder="Your reply..." 
-                          style={{ flex: 1, padding: "5px", borderRadius: "4px", border: "1px solid rgba(255, 255, 255, 0.2)", background: "rgba(0, 0, 0, 0.2)", color: "#fff" }} 
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleReply(Number(tabId)); }}
+                          placeholder={worker.running && worker.status !== "ask_user" ? "Agent is working..." : "Your reply..."} 
+                          disabled={worker.running && worker.status !== "ask_user"}
+                          style={{ flex: 1, padding: "5px", borderRadius: "4px", border: "1px solid rgba(255, 255, 255, 0.2)", background: (worker.running && worker.status !== "ask_user") ? "rgba(0, 0, 0, 0.4)" : "rgba(0, 0, 0, 0.2)", color: (worker.running && worker.status !== "ask_user") ? "#888" : "#fff", cursor: (worker.running && worker.status !== "ask_user") ? "not-allowed" : "text" }} 
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !(worker.running && worker.status !== "ask_user")) handleReply(Number(tabId)); }}
                         />
                         <button 
                           onClick={() => handleReply(Number(tabId))} 
+                          disabled={worker.running && worker.status !== "ask_user"}
                           className="btn btn-primary" 
-                          style={{ padding: "5px 10px", minWidth: "auto", fontSize: "0.9rem" }}
+                          style={{ padding: "5px 10px", minWidth: "auto", fontSize: "0.9rem", opacity: (worker.running && worker.status !== "ask_user") ? 0.5 : 1, cursor: (worker.running && worker.status !== "ask_user") ? "not-allowed" : "pointer" }}
                         >
-                          Send
+                          {(worker.running && worker.status !== "ask_user") ? "Working..." : "Send"}
                         </button>
                       </div>
                     )}
